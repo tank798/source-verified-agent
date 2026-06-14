@@ -997,22 +997,19 @@ function upsertEvidenceCard(run, source, sourceCard, claimIds) {
   if (!source?.snippet && !source?.title) return null;
   const existing = run.ledgers.evidence.find((item) => item.source_id === sourceCard.source_id);
   if (existing) return { ...existing, wasNew: false };
-  const selectedChunk = selectSourceChunks(source, buildFocusTerms(run, { claimIds }), {
-    chunksPerSource: 1,
-    maxChunkTextChars: config.synthesizeEvidenceExcerptChars,
-  })[0];
-  const excerptText = selectedChunk?.text || source.snippet || source.title || "";
+  const excerpt = buildEvidenceExcerptFromSource(source, buildFocusTerms(run, { claimIds }));
   const evidence = {
     evidence_id: `E${run.ledgers.evidence.length + 1}`,
     source_id: sourceCard.source_id,
     claim_ids: [...new Set(claimIds)],
-    original_text_excerpt: summarizeText(excerptText, config.synthesizeEvidenceExcerptChars),
+    original_text_excerpt: excerpt.text,
     excerpt_location: {
       page: null,
-      chunk_id: selectedChunk?.chunk_id || "",
-      char_start: selectedChunk?.char_start ?? null,
-      char_end: selectedChunk?.char_end ?? null,
+      chunk_id: excerpt.locations[0]?.chunk_id || "",
+      char_start: excerpt.locations[0]?.char_start ?? null,
+      char_end: excerpt.locations[0]?.char_end ?? null,
     },
+    excerpt_locations: excerpt.locations,
     data: {
       value: null,
       unit: "",
@@ -2069,6 +2066,49 @@ function chunksPerSourceForStage(source, stage) {
   return { S: 3, A: 3, B: 2, C: 1, D: 1 }[level] || 1;
 }
 
+function chunksPerSourceForEvidence(source) {
+  return { S: 3, A: 3, B: 2, C: 1, D: 1 }[inferSourceLevel(source)] || 1;
+}
+
+function buildEvidenceExcerptFromSource(source, focusTerms) {
+  const selectedChunks = selectSourceChunks(source, focusTerms, {
+    chunksPerSource: chunksPerSourceForEvidence(source),
+    maxChunkTextChars: config.sourceChunkChars,
+  });
+  if (selectedChunks.length === 0) {
+    const fallback = summarizeText(source.snippet || source.title || "", config.synthesizeEvidenceExcerptChars);
+    return {
+      text: fallback,
+      locations: [],
+    };
+  }
+
+  const parts = [];
+  const locations = [];
+  let remaining = config.synthesizeEvidenceExcerptChars;
+  for (const chunk of selectedChunks) {
+    if (remaining <= 0) break;
+    const header = `[${chunk.chunk_id || "chunk"} ${chunk.char_start ?? "?"}-${chunk.char_end ?? "?"}] `;
+    const available = Math.max(0, remaining - header.length - (parts.length > 0 ? 3 : 0));
+    if (available <= 0) break;
+    const text = summarizeText(chunk.text || "", available);
+    if (!text) continue;
+    parts.push(`${header}${text}`);
+    locations.push({
+      chunk_id: chunk.chunk_id || "",
+      char_start: chunk.char_start ?? null,
+      char_end: chunk.char_end ?? null,
+      relevance_score: chunk.relevance_score ?? null,
+    });
+    remaining -= header.length + text.length + 3;
+  }
+
+  return {
+    text: parts.join(" | "),
+    locations,
+  };
+}
+
 function selectSourceChunks(source, focusTerms, { chunksPerSource = 1, maxChunkTextChars = config.sourceChunkChars } = {}) {
   const chunks = arrayify(source?.chunks);
   const fallbackText = source?.snippet || source?.key_snippet || source?.title || "";
@@ -2312,6 +2352,7 @@ function buildExtractionBrief(parsed) {
       chunk_id: item.chunk_id || item.excerpt_location?.chunk_id || "",
       char_start: item.char_start ?? item.excerpt_location?.char_start ?? null,
       char_end: item.char_end ?? item.excerpt_location?.char_end ?? null,
+      excerpt_locations: arrayify(item.excerpt_locations).slice(0, 6),
       limitations: summarizeText(item.limitations || "", 220),
     })),
     source_coverage: parsed.source_coverage || {},
@@ -2741,11 +2782,8 @@ function buildDeterministicExtraction(run) {
 
   const evidence = sources.map((source, index) => {
     const level = inferSourceLevel(source);
-    const selectedChunk = selectSourceChunks(source, buildFocusTerms(run), {
-      chunksPerSource: 1,
-      maxChunkTextChars: config.synthesizeEvidenceExcerptChars,
-    })[0];
-    const text = summarizeText(selectedChunk?.text || source.snippet || source.title || "", config.synthesizeEvidenceExcerptChars);
+    const excerpt = buildEvidenceExcerptFromSource(source, buildFocusTerms(run));
+    const text = excerpt.text || summarizeText(source.snippet || source.title || "", config.synthesizeEvidenceExcerptChars);
     return {
       evidence_id: `E${index + 1}`,
       claim_or_data: summarizeText(text || source.title || source.url, 320),
@@ -2775,9 +2813,10 @@ function buildDeterministicExtraction(run) {
       source_id: source.source_id || "",
       source_artifact_path: source.source_artifact_path || "",
       source_text_path: source.source_text_path || "",
-      chunk_id: selectedChunk?.chunk_id || "",
-      char_start: selectedChunk?.char_start ?? null,
-      char_end: selectedChunk?.char_end ?? null,
+      chunk_id: excerpt.locations[0]?.chunk_id || "",
+      char_start: excerpt.locations[0]?.char_start ?? null,
+      char_end: excerpt.locations[0]?.char_end ?? null,
+      excerpt_locations: excerpt.locations,
       limitations: source.snippet ? "" : "未读取网页正文，仅保留搜索来源线索。",
     };
   });
@@ -2857,6 +2896,7 @@ function buildExtractionFromLedgers(run) {
       chunk_id: item.excerpt_location?.chunk_id || "",
       char_start: item.excerpt_location?.char_start ?? null,
       char_end: item.excerpt_location?.char_end ?? null,
+      excerpt_locations: arrayify(item.excerpt_locations).slice(0, 6),
       limitations: arrayify(item.limitations || source.limitations).join("；"),
     };
   });

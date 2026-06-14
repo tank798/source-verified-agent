@@ -10,7 +10,7 @@
 - 本阶段不新增来源链接、机构名、数据或事实；只能使用输入中的已核验证据、计算/推算和明确缺口。
 - 正式报告面向读者，只写结论、分析和必要推算，不堆搜索过程和证据表。
 - 核验报告负责承接完整证据、评分、时间口径、冲突、缺口、逻辑链和正文映射。
-- 输入证据中的 `source_id`、`source_artifact_path`、`chunk_id`、`char_start`、`char_end` 是离线原文追溯字段；核验报告的证据表和正文映射中应保留这些字段。
+- 输入证据中的 `source_id`、`source_artifact_path`、`chunk_id`、`char_start`、`char_end`、`excerpt_locations` 是离线原文追溯字段；如果一条证据合并了多个 chunk，应在核验报告的证据表和正文映射中保留这些字段。
 
 # 按需回读
 
