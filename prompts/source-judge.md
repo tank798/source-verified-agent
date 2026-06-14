@@ -24,9 +24,40 @@
 - 如果你认为完整原文可能有更多信息，但当前 chunk 没展示，不要臆造；应在 `needed_items` 或 `verifier_issues` 中标记需要回读/补查的具体缺口。
 - `source_artifact_path` 只用于可追溯审计，不代表你已经看过完整文件。
 
+# 按需回读
+
+如果当前 `context_chunks` 不足以判断，但某个来源明显值得继续看，可以先输出 `context_requests`，请求后端回读更多原文片段。此时仍然只输出 JSON，不要写报告。
+
+请求格式：
+
+```json
+{
+  "context_requests": [
+    {
+      "request_id": "CR1",
+      "source_id": "S1",
+      "source_artifact_id": "source-r01-01",
+      "url": "https://...",
+      "chunk_id": "",
+      "char_start": null,
+      "char_end": null,
+      "query": "需要核验的指标、时间、口径或事实",
+      "reason": "为什么当前 chunk 不够",
+      "max_chunks": 3
+    }
+  ]
+}
+```
+
+规则：
+
+- 只有在“值得读更多”的 S/A/B 来源上请求回读；不要对低质来源滥用。
+- 每次最多请求 6 个来源，每个来源最多 3 个 chunk。
+- 如果已经看到“按需回读结果”，必须输出最终 `search_decision`，不要继续请求上下文。
+
 # 输出格式
 
-只输出 JSON，不要输出 Markdown 代码块：
+最终判断时只输出 JSON，不要输出 Markdown 代码块：
 
 ```json
 {

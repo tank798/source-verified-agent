@@ -12,6 +12,33 @@
 - 核验报告负责承接完整证据、评分、时间口径、冲突、缺口、逻辑链和正文映射。
 - 输入证据中的 `source_id`、`source_artifact_path`、`chunk_id`、`char_start`、`char_end` 是离线原文追溯字段；核验报告的证据表和正文映射中应保留这些字段。
 
+# 按需回读
+
+你会先收到核验证据 brief。brief 是后端从证据表裁剪出的结构化输入，不是 AI 总结。它通常包含原文摘录，但不一定包含完整上下文。
+
+如果 brief 不足以写清楚关键结论、时间口径、数据口径或冲突处理，可以先输出 `context_requests`，请求后端回读来源原文片段：
+
+```json
+{
+  "context_requests": [
+    {
+      "request_id": "CR1",
+      "source_id": "S1",
+      "source_artifact_id": "source-r01-01",
+      "url": "https://...",
+      "chunk_id": "",
+      "char_start": null,
+      "char_end": null,
+      "query": "需要补看的原文信息",
+      "reason": "为什么 brief 不够",
+      "max_chunks": 3
+    }
+  ]
+}
+```
+
+看到“按需回读结果”后，必须输出最终 `research_report_md` 和 `verification_report_md`，不要继续请求上下文。
+
 # 正式报告写法
 
 - 按用户确认的大纲和任务需求写，不套固定章节。
@@ -38,7 +65,7 @@
 11. 未找到数据记录
 12. 正文映射
 
-# 输出格式
+# 最终输出格式
 
 只输出 JSON，不要输出 Markdown 代码块：
 

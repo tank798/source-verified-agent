@@ -25,17 +25,21 @@ const config = {
   maxSearchRounds: Math.min(toInt(process.env.MAX_SEARCH_ROUNDS, 2), 2),
   maxResearchLanes: Math.min(Math.max(toInt(process.env.MAX_RESEARCH_LANES, 1), 1), 3),
   maxSourcesPerRound: toInt(process.env.MAX_SOURCES_PER_ROUND, 20),
-  maxSourcesToJudgePerRound: Math.min(Math.max(toInt(process.env.MAX_SOURCES_TO_JUDGE_PER_ROUND, 6), 1), 12),
+  maxSourcesToJudgePerRound: Math.min(Math.max(toInt(process.env.MAX_SOURCES_TO_JUDGE_PER_ROUND, 10), 1), 16),
   maxSourceExcerptChars: Math.min(Math.max(toInt(process.env.MAX_SOURCE_EXCERPT_CHARS, 420), 160), 1200),
-  sourceChunkChars: Math.min(Math.max(toInt(process.env.SOURCE_CHUNK_CHARS, 1200), 500), 3000),
-  sourceChunkOverlapChars: Math.min(Math.max(toInt(process.env.SOURCE_CHUNK_OVERLAP_CHARS, 160), 40), 600),
-  maxContextChunksPerRound: Math.min(Math.max(toInt(process.env.MAX_CONTEXT_CHUNKS_PER_ROUND, 10), 2), 30),
-  sourceJudgeContextBudgetChars: Math.min(Math.max(toInt(process.env.SOURCE_JUDGE_CONTEXT_BUDGET_CHARS, 14000), 4000), 40000),
-  extractContextBudgetChars: Math.min(Math.max(toInt(process.env.EXTRACT_CONTEXT_BUDGET_CHARS, 26000), 8000), 70000),
-  synthesizeEvidenceExcerptChars: Math.min(Math.max(toInt(process.env.SYNTHESIZE_EVIDENCE_EXCERPT_CHARS, 1200), 420), 2400),
+  sourceChunkChars: Math.min(Math.max(toInt(process.env.SOURCE_CHUNK_CHARS, 2000), 800), 6000),
+  sourceChunkOverlapChars: Math.min(Math.max(toInt(process.env.SOURCE_CHUNK_OVERLAP_CHARS, 240), 80), 1200),
+  maxContextChunksPerRound: Math.min(Math.max(toInt(process.env.MAX_CONTEXT_CHUNKS_PER_ROUND, 24), 4), 80),
+  sourceJudgeContextBudgetChars: Math.min(Math.max(toInt(process.env.SOURCE_JUDGE_CONTEXT_BUDGET_CHARS, 60000), 12000), 180000),
+  extractContextBudgetChars: Math.min(Math.max(toInt(process.env.EXTRACT_CONTEXT_BUDGET_CHARS, 120000), 24000), 220000),
+  synthesizeEvidenceExcerptChars: Math.min(Math.max(toInt(process.env.SYNTHESIZE_EVIDENCE_EXCERPT_CHARS, 4000), 1200), 12000),
+  synthesizeReadbackBudgetChars: Math.min(Math.max(toInt(process.env.SYNTHESIZE_READBACK_BUDGET_CHARS, 60000), 12000), 160000),
+  maxContextReadRoundsPerStage: Math.min(Math.max(toInt(process.env.MAX_CONTEXT_READ_ROUNDS_PER_STAGE, 2), 0), 4),
+  maxContextRequestsPerRound: Math.min(Math.max(toInt(process.env.MAX_CONTEXT_REQUESTS_PER_ROUND, 6), 1), 12),
+  maxContextReadCharsPerRequest: Math.min(Math.max(toInt(process.env.MAX_CONTEXT_READ_CHARS_PER_REQUEST, 8000), 2000), 24000),
   maxTavilyCreditsPerRun: Math.max(toInt(process.env.MAX_TAVILY_CREDITS_PER_RUN, 2), 1),
-  maxModelCallsPerRun: Math.max(toInt(process.env.MAX_MODEL_CALLS_PER_RUN, 6), 1),
-  maxTotalModelTokensPerRun: Math.max(toInt(process.env.MAX_TOTAL_MODEL_TOKENS_PER_RUN, 12000), 1000),
+  maxModelCallsPerRun: Math.max(toInt(process.env.MAX_MODEL_CALLS_PER_RUN, 10), 1),
+  maxTotalModelTokensPerRun: Math.max(toInt(process.env.MAX_TOTAL_MODEL_TOKENS_PER_RUN, 200000), 10000),
   maxWallTimeSecondsPerRun: Math.max(toInt(process.env.MAX_WALL_TIME_SECONDS_PER_RUN, 180), 30),
   maxRepairRounds: Math.max(toInt(process.env.MAX_REPAIR_ROUNDS, 2), 0),
   maxRepairRoundsPerClaim: Math.max(toInt(process.env.MAX_REPAIR_ROUNDS_PER_CLAIM, 1), 0),
@@ -48,9 +52,9 @@ const config = {
   textTimeoutMs: toInt(process.env.SILICONFLOW_TIMEOUT_MS, 60000),
   textMaxOutputTokens: toInt(process.env.SILICONFLOW_MAX_OUTPUT_TOKENS, 8192),
   planMaxOutputTokens: toInt(process.env.PLAN_MAX_OUTPUT_TOKENS, 4096),
-  judgeMaxOutputTokens: toInt(process.env.JUDGE_MAX_OUTPUT_TOKENS, 1024),
+  judgeMaxOutputTokens: toInt(process.env.JUDGE_MAX_OUTPUT_TOKENS, 2048),
   extractMaxOutputTokens: toInt(process.env.EXTRACT_MAX_OUTPUT_TOKENS, 2048),
-  synthesizeMaxOutputTokens: toInt(process.env.SYNTHESIZE_MAX_OUTPUT_TOKENS, 4096),
+  synthesizeMaxOutputTokens: toInt(process.env.SYNTHESIZE_MAX_OUTPUT_TOKENS, 8192),
   useFullExtractionModel: process.env.ENABLE_FULL_EXTRACTION_MODEL === "true",
 };
 
@@ -123,6 +127,10 @@ const server = createServer(async (req, res) => {
           maxContextChunksPerRound: config.maxContextChunksPerRound,
           sourceJudgeContextBudgetChars: config.sourceJudgeContextBudgetChars,
           extractContextBudgetChars: config.extractContextBudgetChars,
+          synthesizeEvidenceExcerptChars: config.synthesizeEvidenceExcerptChars,
+          synthesizeReadbackBudgetChars: config.synthesizeReadbackBudgetChars,
+          maxContextReadRoundsPerStage: config.maxContextReadRoundsPerStage,
+          maxContextRequestsPerRound: config.maxContextRequestsPerRound,
         },
         maxTavilyCreditsPerRun: config.maxTavilyCreditsPerRun,
         maxModelCallsPerRun: config.maxModelCallsPerRun,
@@ -1233,7 +1241,47 @@ function roundNumber(value) {
 
 async function judgeSources(run, userNotes, context) {
   const searchContext = buildSearchContextPack(run, { stage: "source_judge", context });
-  const input = [
+  const readbacks = [];
+  let latest = { response: null, text: "", parsed: null };
+  for (let attempt = 0; attempt <= config.maxContextReadRoundsPerStage; attempt += 1) {
+    const input = buildJudgeInput(run, userNotes, context, searchContext, readbacks, attempt > 0);
+    const response = await callTextModel({
+      run,
+      stage: attempt === 0 ? "source_judge" : `source_judge_readback_${attempt}`,
+      model: modelForRun(run, config.judgeModel),
+      system: prompts.base,
+      input,
+      maxTokens: config.judgeMaxOutputTokens,
+      temperature: 0.05,
+    });
+    const text = getOutputText(response);
+    const parsed = parseJsonLoose(text);
+    latest = { response, text, parsed };
+    const requests = normalizeContextRequests(parsed?.context_requests);
+    if (requests.length === 0 || attempt >= config.maxContextReadRoundsPerStage) break;
+    const readback = resolveContextRequests(run, requests, {
+      stage: "source_judge",
+      focusTerms: searchContext.focus_terms,
+      charBudget: Math.floor(config.sourceJudgeContextBudgetChars / 2),
+    });
+    readbacks.push(readback);
+    await auditRunEvent(run, "context_readback", {
+      stage: "source_judge",
+      attempt: attempt + 1,
+      requested: requests.length,
+      returned: readback.results.length,
+      chars: readback.char_count,
+    });
+  }
+  return {
+    raw: latest.response,
+    text: latest.text,
+    parsed: normalizeJudge(latest.parsed, searchContext),
+  };
+}
+
+function buildJudgeInput(run, userNotes, context, searchContext, readbacks, finalRequired) {
+  return [
     prompts.sourceJudge,
     "# 用户原始需求",
     run.prompt,
@@ -1245,25 +1293,12 @@ async function judgeSources(run, userNotes, context) {
     JSON.stringify(context || {}),
     "# 搜索上下文包",
     JSON.stringify(searchContext),
+    readbacks.length > 0 ? "# 按需回读结果" : "",
+    readbacks.length > 0 ? JSON.stringify(readbacks) : "",
+    finalRequired ? "# 本轮要求\n必须基于搜索上下文包和按需回读结果输出最终 JSON，不要继续请求上下文。" : "",
     "# 当前日期",
     todayISO(),
-  ].join("\n\n");
-
-  const response = await callTextModel({
-    run,
-    stage: "source_judge",
-    model: modelForRun(run, config.judgeModel),
-    system: prompts.base,
-    input,
-    maxTokens: config.judgeMaxOutputTokens,
-    temperature: 0.05,
-  });
-  const text = getOutputText(response);
-  return {
-    raw: response,
-    text,
-    parsed: normalizeJudge(parseJsonLoose(text), searchContext),
-  };
+  ].filter(Boolean).join("\n\n");
 }
 
 async function extractAndScore(run, userNotes, context) {
@@ -1303,7 +1338,46 @@ async function extractAndScore(run, userNotes, context) {
 }
 
 async function synthesizeReports(run, userNotes) {
-  const input = [
+  const evidenceBrief = buildExtractionBrief(run.extraction?.parsed || {});
+  const readbacks = [];
+  let latest = { response: null, text: "", parsed: null };
+  for (let attempt = 0; attempt <= config.maxContextReadRoundsPerStage; attempt += 1) {
+    const input = buildSynthesisInput(run, userNotes, evidenceBrief, readbacks, attempt > 0);
+    const response = await callTextModel({
+      run,
+      stage: attempt === 0 ? "synthesize" : `synthesize_readback_${attempt}`,
+      model: modelForRun(run, config.synthesizeModel),
+      system: prompts.base,
+      input,
+      maxTokens: config.synthesizeMaxOutputTokens,
+      temperature: 0.25,
+    });
+    const text = getOutputText(response);
+    const parsed = parseJsonLoose(text);
+    latest = { response, text, parsed };
+    if (parsed?.research_report_md && parsed?.verification_report_md) break;
+    const requests = normalizeContextRequests(parsed?.context_requests);
+    if (requests.length === 0 || attempt >= config.maxContextReadRoundsPerStage) break;
+    const readback = resolveContextRequests(run, requests, {
+      stage: "synthesize",
+      focusTerms: buildFocusTerms(run, evidenceBrief),
+      charBudget: config.synthesizeReadbackBudgetChars,
+    });
+    readbacks.push(readback);
+    await auditRunEvent(run, "context_readback", {
+      stage: "synthesize",
+      attempt: attempt + 1,
+      requested: requests.length,
+      returned: readback.results.length,
+      chars: readback.char_count,
+    });
+  }
+  const parsed = normalizeSynthesis(latest.parsed, latest.text, run);
+  return { raw: latest.response, text: latest.text, parsed };
+}
+
+function buildSynthesisInput(run, userNotes, evidenceBrief, readbacks, finalRequired) {
+  return [
     prompts.synthesize,
     "# 用户原始需求",
     run.prompt,
@@ -1312,21 +1386,11 @@ async function synthesizeReports(run, userNotes) {
     "# 已确认计划摘要",
     JSON.stringify(buildPlanBrief(run.plan)),
     "# 核验证据",
-    JSON.stringify(buildExtractionBrief(run.extraction?.parsed || {})),
-  ].join("\n\n");
-
-  const response = await callTextModel({
-    run,
-    stage: "synthesize",
-    model: modelForRun(run, config.synthesizeModel),
-    system: prompts.base,
-    input,
-    maxTokens: config.synthesizeMaxOutputTokens,
-    temperature: 0.25,
-  });
-  const text = getOutputText(response);
-  const parsed = normalizeSynthesis(parseJsonLoose(text), text, run);
-  return { raw: response, text, parsed };
+    JSON.stringify(evidenceBrief),
+    readbacks.length > 0 ? "# 按需回读结果" : "",
+    readbacks.length > 0 ? JSON.stringify(readbacks) : "",
+    finalRequired ? "# 本轮要求\n必须基于核验证据和按需回读结果输出最终两份 Markdown 的 JSON，不要继续请求上下文。" : "",
+  ].filter(Boolean).join("\n\n");
 }
 
 function resolveRequestedTextModel(requestedModel) {
@@ -1914,6 +1978,7 @@ function buildSearchContextPack(run, { stage = "source_judge", context = {} } = 
       chunk_overlap_chars: config.sourceChunkOverlapChars,
       max_sources_per_round: policy.maxSourcesPerRound,
       chunks_per_source: policy.chunksPerSource,
+      chunks_per_source_policy: policy.chunksPerSourcePolicy,
       max_chunks_per_round: policy.maxChunksPerRound,
       char_budget: policy.charBudget,
       budget_allocation: "按搜索轮次平均分配，避免旧轮次吞掉新轮次上下文。",
@@ -1938,7 +2003,7 @@ function buildSearchContextPack(run, { stage = "source_judge", context = {} } = 
           const selectedChunks = [];
           if (remaining.chars > 0 && chunksUsed < policy.maxChunksPerRound) {
             const chunks = selectSourceChunks(source, focusTerms, {
-              chunksPerSource: policy.chunksPerSource,
+              chunksPerSource: chunksPerSourceForStage(source, stage),
               maxChunkTextChars: policy.maxChunkTextChars,
             });
             for (const chunk of chunks) {
@@ -1984,13 +2049,24 @@ function contextPolicyForStage(stage) {
     maxSourcesPerRound: extractLike
       ? Math.min(config.maxSourcesPerRound, Math.max(config.maxSourcesToJudgePerRound, 10))
       : config.maxSourcesToJudgePerRound,
-    chunksPerSource: extractLike ? 2 : 1,
+    chunksPerSource: extractLike ? "S/A:4, B:3, C:2, D:1" : "S/A:3, B:2, C:1, D:1",
+    chunksPerSourcePolicy: extractLike
+      ? { S: 4, A: 4, B: 3, C: 2, D: 1 }
+      : { S: 3, A: 3, B: 2, C: 1, D: 1 },
     maxChunksPerRound: extractLike
-      ? Math.min(config.maxContextChunksPerRound * 2, 40)
+      ? Math.min(config.maxContextChunksPerRound * 2, 80)
       : config.maxContextChunksPerRound,
     maxChunkTextChars: extractLike ? config.sourceChunkChars : Math.min(config.sourceChunkChars, 1000),
     charBudget: extractLike ? config.extractContextBudgetChars : config.sourceJudgeContextBudgetChars,
   };
+}
+
+function chunksPerSourceForStage(source, stage) {
+  const level = inferSourceLevel(source);
+  if (stage === "extract") {
+    return { S: 4, A: 4, B: 3, C: 2, D: 1 }[level] || 2;
+  }
+  return { S: 3, A: 3, B: 2, C: 1, D: 1 }[level] || 1;
 }
 
 function selectSourceChunks(source, focusTerms, { chunksPerSource = 1, maxChunkTextChars = config.sourceChunkChars } = {}) {
@@ -2331,6 +2407,149 @@ function getSearchesFromContext(contextPack) {
 function getSourceCandidateText(source) {
   const chunkText = arrayify(source?.context_chunks).map((chunk) => chunk.text).filter(Boolean).join("\n");
   return chunkText || source?.key_snippet || source?.snippet || "";
+}
+
+function normalizeContextRequests(value) {
+  const list = Array.isArray(value)
+    ? value
+    : value && typeof value === "object"
+      ? [value]
+      : arrayify(value).map((item) => ({ query: item }));
+  return list
+    .slice(0, config.maxContextRequestsPerRound)
+    .map((request, index) => {
+      const normalized = request && typeof request === "object" ? request : { query: String(request || "") };
+      return {
+        request_id: normalized.request_id || `CR${index + 1}`,
+        source_id: normalized.source_id || "",
+        source_artifact_id: normalized.source_artifact_id || "",
+        url: normalized.url || "",
+        chunk_id: normalized.chunk_id || "",
+        char_start: normalized.char_start ?? null,
+        char_end: normalized.char_end ?? null,
+        query: summarizeText(normalized.query || normalized.reason || normalized.needed_item || "", 240),
+        reason: summarizeText(normalized.reason || normalized.needed_item || "", 240),
+        max_chunks: Math.min(Math.max(toInt(normalized.max_chunks, 3), 1), 6),
+      };
+    })
+    .filter((request) => request.source_id || request.source_artifact_id || request.url || request.query);
+}
+
+function resolveContextRequests(run, requests, { stage, focusTerms = [], charBudget = config.synthesizeReadbackBudgetChars } = {}) {
+  const normalizedRequests = normalizeContextRequests(requests);
+  const results = [];
+  let remaining = charBudget;
+  for (const request of normalizedRequests) {
+    if (remaining <= 0) break;
+    const source = findSourceForContextRequest(run, request);
+    if (!source) {
+      results.push({
+        request_id: request.request_id,
+        status: "not_found",
+        reason: "未找到匹配 source；只能基于已有上下文处理。",
+        request,
+      });
+      continue;
+    }
+    const terms = uniqueStrings([
+      ...focusTerms,
+      ...splitFocusTerms(request.query),
+      ...splitFocusTerms(request.reason),
+    ]);
+    const chunks = selectChunksForContextRequest(source, request, terms)
+      .slice(0, request.max_chunks);
+    const returnedChunks = [];
+    for (const chunk of chunks) {
+      if (remaining <= 0) break;
+      const maxChars = Math.min(config.maxContextReadCharsPerRequest, remaining);
+      const text = summarizeText(chunk.text || "", maxChars);
+      if (!text) continue;
+      returnedChunks.push({
+        chunk_id: chunk.chunk_id || "",
+        char_start: chunk.char_start ?? null,
+        char_end: chunk.char_end ?? null,
+        relevance_score: chunk.relevance_score ?? null,
+        text,
+      });
+      remaining -= text.length;
+    }
+    results.push({
+      request_id: request.request_id,
+      status: returnedChunks.length > 0 ? "ok" : "empty",
+      stage,
+      request,
+      source: {
+        source_id: source.source_id || "",
+        source_artifact_id: source.source_artifact_id || "",
+        title: source.title || source.url || "",
+        url: source.url || "",
+        publisher: source.publisher || "",
+        level: source.level || inferSourceLevel(source),
+        source_artifact_path: source.source_artifact_path || "",
+        source_text_path: source.source_text_path || "",
+        content_char_count: source.content_char_count || 0,
+        chunk_count: source.chunk_count || 0,
+      },
+      chunks: returnedChunks,
+    });
+  }
+  return {
+    stage,
+    strategy: "on_demand_source_readback",
+    char_budget: charBudget,
+    char_count: charBudget - remaining,
+    results,
+  };
+}
+
+function selectChunksForContextRequest(source, request, focusTerms) {
+  const chunks = arrayify(source?.chunks);
+  if (request.chunk_id) {
+    const matched = chunks.find((chunk) => chunk.chunk_id === request.chunk_id);
+    if (matched) return [{ ...matched, relevance_score: 999 }];
+  }
+  if (request.char_start !== null || request.char_end !== null) {
+    const start = Number.isFinite(Number(request.char_start)) ? Number(request.char_start) : 0;
+    const end = Number.isFinite(Number(request.char_end)) ? Number(request.char_end) : Number.MAX_SAFE_INTEGER;
+    const overlapped = chunks
+      .filter((chunk) => (chunk.char_end ?? 0) >= start && (chunk.char_start ?? 0) <= end)
+      .map((chunk) => ({ ...chunk, relevance_score: 998 }));
+    if (overlapped.length > 0) return overlapped;
+  }
+  return selectSourceChunks(source, focusTerms, {
+    chunksPerSource: request.max_chunks || 3,
+    maxChunkTextChars: config.maxContextReadCharsPerRequest,
+  });
+}
+
+function findSourceForContextRequest(run, request) {
+  const sources = getAllRunSources(run);
+  if (request.source_id) {
+    const matched = sources.find((source) => source.source_id === request.source_id);
+    if (matched) return matched;
+  }
+  if (request.source_artifact_id) {
+    const matched = sources.find((source) => source.source_artifact_id === request.source_artifact_id);
+    if (matched) return matched;
+  }
+  if (request.url) {
+    const canonical = canonicalizeUrlForDedupe(request.url);
+    const matched = sources.find((source) => canonicalizeUrlForDedupe(source.url) === canonical);
+    if (matched) return matched;
+  }
+  if (request.query) {
+    const terms = splitFocusTerms(request.query);
+    return sources
+      .map((source) => ({ source, score: scoreTextAgainstFocus(`${source.title || ""} ${source.url || ""} ${source.publisher || ""} ${source.snippet || ""}`, terms) + compactSourceScore(source) }))
+      .sort((a, b) => b.score - a.score)[0]?.source || null;
+  }
+  return null;
+}
+
+function getAllRunSources(run) {
+  return mergeSources(
+    ...arrayify(run?.searches).flatMap((taskResult) => arrayify(taskResult.rounds).map((round) => arrayify(round.sources))),
+  );
 }
 
 function normalizeJudge(parsed, compactSearches) {
