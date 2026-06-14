@@ -1,0 +1,9 @@
+{
+  "scripts": {
+    "dev": "node server.mjs",
+    "smoke:tavily": "node scripts/tavily-smoke-test.mjs",
+    "smoke:e2e": "node scripts/e2e-smoke-test.mjs"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

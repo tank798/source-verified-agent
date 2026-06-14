@@ -1,0 +1,11 @@
+.env
+env.txt
+qwen api.txt
+tavily搜索 api.txt
+硅基 api.txt
+*.key
+*.secret
+node_modules/
+dist/
+.DS_Store
+outputs/

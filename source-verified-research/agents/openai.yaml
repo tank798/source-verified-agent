@@ -1,0 +1,6 @@
+interface:
+  display_name: "信源核验型咨询报告"
+  short_description: "先确认报告大纲，再撰写报告并核验信源、口径与推算"
+  default_prompt: "使用 $source-verified-research 先给出正式报告大纲和信源核验计划，确认后再撰写报告与核验报告。"
+policy:
+  allow_implicit_invocation: true
